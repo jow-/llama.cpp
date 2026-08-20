@@ -30,6 +30,7 @@
 #define cublasGemmStridedBatchedEx mublasGemmStridedBatchedEx
 #define cublasHandle_t mublasHandle_t
 #define cublasSetMathMode mublasSetMathMode
+#define cublasSetWorkspace(handle, workspace, size) MUBLAS_STATUS_SUCCESS
 #define cublasSetStream mublasSetStream
 #define cublasSgemm mublasSgemm
 #define cublasSgemmBatched mublasSgemmBatched
