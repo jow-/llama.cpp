@@ -4056,10 +4056,20 @@ static void ggml_cuda_graph_evaluate_and_capture(ggml_backend_cuda_context * cud
         if (!use_cuda_graph || cuda_graph_update_required) {
             [[maybe_unused]] int prev_i = 0;
 
+            // Concurrent streams use non-capturing extra streams to wait on events recorded on the
+            // capturing main stream.  This creates a circular dependency during CUDA graph capture
+            // (the fork event is captured as a graph node and can only be signalled when the graph
+            // runs, but the extra stream waits for it immediately, before the graph is launched),
+            // causing cuBLAS to see an invalid stream state and return CUBLAS_STATUS_INVALID_VALUE.
+            // Skip concurrent events entirely while the main stream is being captured.
+            cudaStreamCaptureStatus cap_status = cudaStreamCaptureStatusNone;
             if (stream_ctx.concurrent_events.size() > 0) {
-                should_launch_concurrent_events = true;
-                for (const auto & [tensor, event] : stream_ctx.concurrent_events) {
-                    should_launch_concurrent_events = should_launch_concurrent_events && event.is_valid();
+                cudaStreamIsCapturing(cuda_ctx->stream(), &cap_status);
+                if (cap_status == cudaStreamCaptureStatusNone) {
+                    should_launch_concurrent_events = true;
+                    for (const auto & [tensor, event] : stream_ctx.concurrent_events) {
+                        should_launch_concurrent_events = should_launch_concurrent_events && event.is_valid();
+                    }
                 }
             }
 
