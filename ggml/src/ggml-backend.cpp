@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <algorithm>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -1680,6 +1681,102 @@ static bool ggml_backend_sched_alloc_splits(ggml_backend_sched_t sched) {
     return true;
 }
 
+// [TAG_INTERGPU_SAMPLER]
+// dump samples of the activation packets that cross a device boundary, so that
+// compression schemes can be evaluated offline against real data. enable with
+//   GGML_SCHED_SAMPLE_INTERGPU=/path/to/outdir
+// tuning (all optional):
+//   GGML_SCHED_SAMPLE_MIN_BYTES = only sample tensors >= this many bytes (default 1048576)
+//   GGML_SCHED_SAMPLE_MAX_FILES = stop after this many files (default 64)
+//   GGML_SCHED_SAMPLE_EVERY     = sample every Nth eligible copy (default 1)
+// each sample is written as <outdir>/sampler.bin.<seq> with a 64-byte header
+struct ggml_intergpu_sampler {
+    bool        enabled = false;
+    std::string outdir;
+    size_t      min_bytes = 1048576;
+    int         max_files = 64;
+    int         every     = 1;
+    int         n_files   = 0;
+    int64_t     n_seen    = 0;
+};
+
+static ggml_intergpu_sampler & intergpu_sampler() {
+    static ggml_intergpu_sampler s;
+    static bool inited = false;
+    if (!inited) {
+        inited = true;
+        const char * dir = getenv("GGML_SCHED_SAMPLE_INTERGPU");
+        if (dir && *dir) {
+            s.enabled = true;
+            s.outdir  = dir;
+            if (const char * v = getenv("GGML_SCHED_SAMPLE_MIN_BYTES")) s.min_bytes = (size_t) atoll(v);
+            if (const char * v = getenv("GGML_SCHED_SAMPLE_MAX_FILES")) s.max_files = atoi(v);
+            if (const char * v = getenv("GGML_SCHED_SAMPLE_EVERY"))     s.every     = atoi(v);
+            if (s.every < 1) s.every = 1;
+            GGML_LOG_INFO("intergpu sampler: enabled, outdir=%s min_bytes=%zu max_files=%d every=%d\n",
+                    s.outdir.c_str(), s.min_bytes, s.max_files, s.every);
+        }
+    }
+    return s;
+}
+
+// called from the scheduler right before a non-weight activation is copied to another device
+static void ggml_sched_sample_intergpu(const struct ggml_tensor * input, ggml_backend_t input_backend) {
+    ggml_intergpu_sampler & s = intergpu_sampler();
+    if (!s.enabled || s.n_files >= s.max_files) {
+        return;
+    }
+    // only activations (compute buffer), skip weights and tiny tensors
+    if (input->buffer == NULL || ggml_backend_buffer_get_usage(input->buffer) == GGML_BACKEND_BUFFER_USAGE_WEIGHTS) {
+        return;
+    }
+    const size_t nbytes = ggml_nbytes(input);
+    if (nbytes < s.min_bytes) {
+        return;
+    }
+    s.n_seen++;
+    if (s.n_seen % s.every != 0) {
+        return;
+    }
+    // pull a sample to host and write it out
+    std::vector<uint8_t> buf(nbytes);
+    ggml_backend_tensor_get(input, buf.data(), 0, nbytes);
+
+    char path[4096];
+    snprintf(path, sizeof(path), "%s/sampler.bin.%d", s.outdir.c_str(), s.n_files);
+    FILE * f = fopen(path, "wb");
+    if (!f) {
+        GGML_LOG_WARN("intergpu sampler: cannot open %s\n", path);
+        return;
+    }
+    struct {
+        uint32_t magic;      // 0x49475341 "AGSI"
+        uint32_t version;    // 1
+        uint32_t type;       // ggml type enum
+        uint32_t ndim;
+        int64_t  ne[4];
+        int64_t  nb[4];
+        uint64_t nbytes;
+        uint32_t op;         // producing op (0 if unknown)
+        uint32_t _pad;
+    } __attribute__((packed)) hdr;
+    hdr.magic   = 0x49475341;
+    hdr.version = 1;
+    hdr.type    = (uint32_t) input->type;
+    hdr.ndim    = 4;
+    for (int i = 0; i < 4; i++) { hdr.ne[i] = input->ne[i]; hdr.nb[i] = input->nb[i]; }
+    hdr.nbytes  = nbytes;
+    hdr.op      = (uint32_t) input->op;
+    hdr._pad    = 0;
+    fwrite(&hdr, 1, sizeof(hdr), f);
+    fwrite(buf.data(), 1, nbytes, f);
+    fclose(f);
+    s.n_files++;
+    GGML_LOG_INFO("intergpu sampler: wrote %s (%.1f MB, from=%s type=%d ne=[%ld,%ld,%ld,%ld] op=%d)\n",
+            path, nbytes / 1048576.0, ggml_backend_name(input_backend), (int) input->type,
+            (long) input->ne[0], (long) input->ne[1], (long) input->ne[2], (long) input->ne[3], (int) input->op);
+}
+
 static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t sched) {
     GGML_ASSERT(sched);
     struct ggml_backend_sched_split * splits = sched->splits;
@@ -1726,6 +1823,9 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
                 } else {
                     ggml_backend_synchronize(split_backend);
                 }
+
+                // [TAG_INTERGPU_SAMPLER] capture the packet before it crosses the device boundary
+                ggml_sched_sample_intergpu(input, input_backend);
 
                 // when offloading MoE weights, we can reduce the amount of data copied by copying only the experts that are used
                 ggml_tensor * node = split->graph.nodes[0];
