@@ -48,6 +48,10 @@ struct llama_cparams {
     bool fused_dsv4_hc_comb;
     bool fused_dsv4_hc_post;
     bool auto_fhc;
+    // dtype used for the residual stream when it crosses a device boundary (layer split).
+    // f32 (default) = no cast. f16/bf16/q8_0 halve (or quarter) the inter-GPU traffic at a
+    // small accuracy cost; the cast is fused into the boundary add so it costs one kernel.
+    enum ggml_type reduce_type;
     bool no_perf;
     bool warmup;             // TODO: remove [TAG_LLAMA_GRAPH_NO_WARMUP]
     bool op_offload;

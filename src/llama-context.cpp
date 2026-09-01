@@ -241,6 +241,20 @@ llama_context::llama_context(
     cparams.fused_dsv4_hc_post = true;
     cparams.auto_fhc           = true;
 
+    // dtype for the residual stream when it crosses a device boundary (layer split).
+    // GGML_REDUCE_TYPE=f16|bf16|q8_0|f32 (default f32 = no cast)
+    cparams.reduce_type = GGML_TYPE_F32;
+    if (const char * rt = getenv("GGML_REDUCE_TYPE")) {
+        if      (!strcmp(rt, "f16"))  cparams.reduce_type = GGML_TYPE_F16;
+        else if (!strcmp(rt, "bf16")) cparams.reduce_type = GGML_TYPE_BF16;
+        else if (!strcmp(rt, "q8_0")) cparams.reduce_type = GGML_TYPE_Q8_0;
+        else if (!strcmp(rt, "f32"))  cparams.reduce_type = GGML_TYPE_F32;
+        else { LLAMA_LOG_WARN("%s: unknown GGML_REDUCE_TYPE '%s', using f32\n", __func__, rt); }
+    }
+    if (cparams.reduce_type != GGML_TYPE_F32) {
+        LLAMA_LOG_INFO("%s: inter-device residual reduce_type = %s\n", __func__, ggml_type_name(cparams.reduce_type));
+    }
+
     // with causal attention, the batch size is limited by the context size
     cparams.n_batch = cparams.causal_attn ? std::min(cparams.n_ctx, params.n_batch) : params.n_batch;
 
