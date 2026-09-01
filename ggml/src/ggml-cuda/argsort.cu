@@ -31,9 +31,11 @@ static __global__ void init_offsets(int * offsets, const int ncols, const int nr
 
 // returns the suggested maximum number of rows to process during one argsort_f32_i32_cuda_cub() call
 int argsort_f32_i32_cuda_cub_chunk_nrows(const size_t nb01, const int64_t nrows) {
-    // perform argsort in chunks up to approximately this size (currently 64MB)
-    // to avoid excessive temporary buffers memory usage
-    const int chunk_bytes = 1 << 26;
+    // perform argsort in chunks up to approximately this size (currently 16MB)
+    // to avoid excessive temporary buffers memory usage.
+    // NOTE: lowered from 64MB to keep the per-PP-step transient peak (~535 MiB -> ~145 MiB)
+    // on every device, so that larger ubatches fit in the remaining VRAM.
+    const int chunk_bytes = 1 << 24;
 
     // calculate how many rows will fit in one chunk (must be at least one)
     const int chunk_nrows = std::max((int) (chunk_bytes / nb01), 1);
