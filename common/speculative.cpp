@@ -2628,7 +2628,8 @@ common_speculative_init_result::common_speculative_init_result(
         for (int i = 0; i < llama_model_n_devices(model_tgt); ++i) {
             llama_model_add_device(model_dft, llama_model_get_device(model_tgt, i));
         }
-        LOG_INF("%s: draft model now has %d devices\n", __func__, llama_model_n_devices(model_dft));
+        fprintf(stderr, "DEBUG: draft model now has %d devices\n", llama_model_n_devices(model_dft));
+        fflush(stderr);
 
         pimpl->model.reset(model_dft);
 
