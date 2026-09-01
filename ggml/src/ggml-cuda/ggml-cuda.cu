@@ -5589,6 +5589,11 @@ ggml_backend_t ggml_backend_cuda_init(int device) {
         return nullptr;
     }
 
+    // allocate the per-stream cuBLAS workspaces and pools up front [GGML_CUDA_PREWARM]
+    if (getenv("GGML_CUDA_PREWARM") != nullptr) {
+        ctx->prewarm();
+    }
+
     ggml_backend_t cuda_backend = new ggml_backend {
         /* .guid    = */ ggml_backend_cuda_guid(),
         /* .iface   = */ ggml_backend_cuda_interface,

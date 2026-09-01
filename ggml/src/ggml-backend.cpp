@@ -838,6 +838,11 @@ struct ggml_backend_sched {
     int debug_realloc;
     int debug_graph_size;
     int debug_prev_graph_size;
+
+    // fail instead of reallocating the compute buffer when a runtime graph needs more
+    // scratch than was reserved [GGML_SCHED_NO_REALLOC]
+    bool no_realloc;
+    bool warned_realloc;
 };
 
 #define hash_id(tensor) ggml_hash_find_or_insert(&sched->hash_set, tensor)
@@ -1624,6 +1629,30 @@ static bool ggml_backend_sched_alloc_splits(ggml_backend_sched_t sched) {
         GGML_LOG_DEBUG("%s: failed to allocate graph, reserving (backend_ids_changed = %d)\n", __func__, backend_ids_changed);
 #endif
 
+        // report the scratch the graph actually needs vs what is reserved, so a
+        // mis-sized reserve is visible instead of dying on a late cudaMalloc
+        bool needs_grow = false;
+        {
+            size_t need[GGML_SCHED_MAX_BACKENDS];
+            ggml_gallocr_reserve_n_size(sched->galloc, &sched->graph, sched->node_backend_ids, sched->leaf_backend_ids, need);
+            for (int i = 0; i < sched->n_backends; i++) {
+                const size_t have = ggml_gallocr_get_buffer_size(sched->galloc, i);
+                if (need[i] > have) {
+                    needs_grow = true;
+                    if (!sched->warned_realloc) {
+                        sched->warned_realloc = true;
+                        GGML_LOG_WARN("%s: graph needs %.2f MiB of %s scratch, only %.2f MiB reserved\n", __func__,
+                                need[i] / (1024.0 * 1024.0), ggml_backend_buft_name(sched->bufts[i]), have / (1024.0 * 1024.0));
+                    }
+                }
+            }
+        }
+
+        if (sched->no_realloc && needs_grow) {
+            GGML_LOG_ERROR("%s: graph exceeds the reserved compute buffer and GGML_SCHED_NO_REALLOC is set, failing instead of reallocating\n", __func__);
+            return false;
+        }
+
         if (sched->debug_realloc > 0) {
             // we are interested only in situations where the graph was reallocated even though its size remained the same [GGML_SCHED_DEBUG_REALLOC]
             // example: https://github.com/ggml-org/llama.cpp/pull/17143
@@ -1871,6 +1900,10 @@ ggml_backend_sched_t ggml_backend_sched_new(
 #endif
     const char * GGML_SCHED_DEBUG_REALLOC = getenv("GGML_SCHED_DEBUG_REALLOC");
     sched->debug_realloc = GGML_SCHED_DEBUG_REALLOC ? atoi(GGML_SCHED_DEBUG_REALLOC) : sched->debug_realloc;
+
+    const char * GGML_SCHED_NO_REALLOC = getenv("GGML_SCHED_NO_REALLOC");
+    sched->no_realloc    = GGML_SCHED_NO_REALLOC ? atoi(GGML_SCHED_NO_REALLOC) != 0 : false;
+    sched->warned_realloc = false;
 
     sched->n_backends = n_backends;
     sched->n_copies = parallel ? GGML_SCHED_MAX_COPIES : 1;

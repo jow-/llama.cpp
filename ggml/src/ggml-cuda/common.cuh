@@ -1530,6 +1530,20 @@ struct ggml_backend_cuda_context {
     ggml_cuda_pool & pool() {
         return pool(device);
     }
+
+    // allocate the per-stream cuBLAS workspaces and pools up front so they do not
+    // show up as late cudaMallocs during inference [GGML_CUDA_PREWARM]
+    void prewarm() {
+        const int saved_stream = curr_stream_no;
+        ggml_cuda_set_device(device);
+        for (int s = 0; s < GGML_CUDA_MAX_STREAMS; ++s) {
+            curr_stream_no = s;
+            (void) stream(device, s);
+            (void) cublas_handle();
+            (void) pool(device);
+        }
+        curr_stream_no = saved_stream;
+    }
 };
 
 struct ggml_cuda_mm_fusion_args_host {
