@@ -2612,13 +2612,11 @@ common_speculative_init_result::common_speculative_init_result(
     if (has_draft) {
         model_path = params.speculative.draft.mparams.path;
         LOG_INF("%s: loading draft model '%s'\n", __func__, model_path.c_str());
-        fprintf(stderr, "DEBUG: entering has_draft branch\n"); fflush(stderr);
 
         // a draft head can leave out the embeddings and lm head and use the target's
         mparams.model_shared = model_tgt;
 
         llama_model * model_dft = llama_model_load_from_file(model_path.c_str(), mparams);
-        fprintf(stderr, "DEBUG: draft load returned %p\n", (void*)model_dft); fflush(stderr);
         if (model_dft == NULL) {
             LOG_ERR("%s: failed to load draft model, '%s'\n", __func__, model_path.c_str());
             return;
@@ -2630,8 +2628,6 @@ common_speculative_init_result::common_speculative_init_result(
         for (int i = 0; i < llama_model_n_devices(model_tgt); ++i) {
             llama_model_add_device(model_dft, llama_model_get_device(model_tgt, i));
         }
-        fprintf(stderr, "DEBUG: draft model now has %d devices\n", llama_model_n_devices(model_dft));
-        fflush(stderr);
 
         pimpl->model.reset(model_dft);
 
