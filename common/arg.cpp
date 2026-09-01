@@ -2457,6 +2457,22 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         }
     ).set_env("LLAMA_ARG_CACHE_TYPE_V"));
     add_opt(common_arg(
+        {"-grt", "--graph-reduce-type"}, "TYPE",
+        string_format(
+            "data type for the residual stream when it crosses a device boundary (layer split)\n"
+            "allowed values: f32, f16, bf16, q8_0\n"
+            "(default: %s)",
+            ggml_type_name(params.reduce_type)
+        ),
+        [](common_params & params, const std::string & value) {
+            if      (value == "f32")  params.reduce_type = GGML_TYPE_F32;
+            else if (value == "f16")  params.reduce_type = GGML_TYPE_F16;
+            else if (value == "bf16") params.reduce_type = GGML_TYPE_BF16;
+            else if (value == "q8_0") params.reduce_type = GGML_TYPE_Q8_0;
+            else { throw std::runtime_error("invalid -grt value: " + value); }
+        }
+    ).set_env("LLAMA_ARG_GRAPH_REDUCE_TYPE"));
+    add_opt(common_arg(
         {"--hellaswag"},
         "compute HellaSwag score over random tasks from datafile supplied with -f",
         [](common_params & params) {

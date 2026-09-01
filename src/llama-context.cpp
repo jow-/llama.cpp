@@ -242,8 +242,11 @@ llama_context::llama_context(
     cparams.auto_fhc           = true;
 
     // dtype for the residual stream when it crosses a device boundary (layer split).
-    // GGML_REDUCE_TYPE=f16|bf16|q8_0|f32 (default f32 = no cast)
-    cparams.reduce_type = GGML_TYPE_F32;
+    // -grt / GGML_REDUCE_TYPE=f16|bf16|q8_0|f32 (default f32 = no cast)
+    cparams.reduce_type = params.type_reduce;
+    if (cparams.reduce_type == GGML_TYPE_COUNT) {
+        cparams.reduce_type = GGML_TYPE_F32;
+    }
     if (const char * rt = getenv("GGML_REDUCE_TYPE")) {
         if      (!strcmp(rt, "f16"))  cparams.reduce_type = GGML_TYPE_F16;
         else if (!strcmp(rt, "bf16")) cparams.reduce_type = GGML_TYPE_BF16;
@@ -3644,6 +3647,7 @@ llama_context_params llama_context_default_params() {
         /*.cb_eval_user_data           =*/ nullptr,
         /*.type_k                      =*/ GGML_TYPE_F16,
         /*.type_v                      =*/ GGML_TYPE_F16,
+        /*.type_reduce                 =*/ GGML_TYPE_F32,
         /*.abort_callback              =*/ nullptr,
         /*.abort_callback_data         =*/ nullptr,
         /*.embeddings                  =*/ false,

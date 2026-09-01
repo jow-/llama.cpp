@@ -393,6 +393,10 @@ extern "C" {
         enum ggml_type type_k; // data type for K cache [EXPERIMENTAL]
         enum ggml_type type_v; // data type for V cache [EXPERIMENTAL]
 
+        // data type for the residual stream when it crosses a device boundary (layer split).
+        // F32 (default) = no cast. F16/BF16/Q8_0 shrink the inter-GPU transfer for prefill.
+        enum ggml_type type_reduce;
+
         // Abort callback
         // if it returns true, execution of llama_decode() will be aborted
         // currently works only with CPU execution
