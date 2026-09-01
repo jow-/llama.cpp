@@ -2745,6 +2745,15 @@ void llama_model_free(llama_model * model) {
     delete model;
 }
 
+void llama_model_add_device(llama_model * model, ggml_backend_dev_t dev) {
+    for (const auto & d : model->devices) {
+        if (d.dev == dev) {
+            return;
+        }
+    }
+    model->devices.push_back({false, dev});
+}
+
 int32_t llama_model_n_ctx_train(const llama_model * model) {
     return model->hparams.n_ctx_train;
 }

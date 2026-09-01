@@ -2622,6 +2622,13 @@ common_speculative_init_result::common_speculative_init_result(
             return;
         }
 
+        // a shared draft head borrows the target's embeddings and lm head, which are
+        // pre-allocated on the target's devices; the draft context needs a backend for each
+        // of them or the scheduler cannot place the borrowed tensors
+        for (int i = 0; i < llama_model_n_devices(model_tgt); ++i) {
+            llama_model_add_device(model_dft, llama_model_get_device(model_tgt, i));
+        }
+
         pimpl->model.reset(model_dft);
 
         llama_context * ctx_dft = llama_init_from_model(model_dft, cparams);

@@ -542,6 +542,10 @@ extern "C" {
 
     LLAMA_API void llama_model_free(struct llama_model * model);
 
+    // add a device to the model's device list if not already present; used so a draft model
+    // that borrows the target's tensors can run on the devices those tensors were placed on
+    LLAMA_API void llama_model_add_device(struct llama_model * model, ggml_backend_dev_t dev);
+
     LLAMA_API struct llama_context * llama_init_from_model(
                      struct llama_model * model,
             struct llama_context_params   params);
