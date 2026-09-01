@@ -4957,7 +4957,11 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
                 if (a->nb[0] != ggml_element_size(a) || b->nb[0] != ggml_element_size(b)) {
                     return false; // TODO this could in principle be implemented though currently there is no use case.
                 }
-                if (b->type == GGML_TYPE_F16 && a->type != GGML_TYPE_F16) {
+                // f16/bf16 activations with quantized weights are handled by the cuBLAS path
+                // (the weight is dequantized to the activation's compute type). this lets the
+                // inter-device residual be transferred in f16/bf16 (-grt) without breaking the matmul.
+                if ((b->type == GGML_TYPE_F16 || b->type == GGML_TYPE_BF16) &&
+                    a->type != b->type && !ggml_is_quantized(a->type)) {
                     return false;
                 }
 #ifdef GGML_USE_MUSA

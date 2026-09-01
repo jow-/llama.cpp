@@ -469,12 +469,6 @@ llama_model_qwen4exp::graph::graph(const llama_model & model, const llm_graph_pa
 
         res_hc = build_hc_combine(res_hc, cur, inject, il);
 
-        // cast the residual to a smaller dtype before it crosses a device boundary (layer
-        // split). only for prefill-sized batches; decode (1 token) transfers are tiny.
-        if (res_hc->ne[2] > 32 && cparams.reduce_type != GGML_TYPE_F32) {
-            res_hc = ggml_cast(ctx0, res_hc, cparams.reduce_type);
-        }
-
         cur = build_hc_mix(res_hc,
                 model.layers[il].hc_ffn_norm,
                 model.layers[il].hc_ffn_down,
@@ -487,6 +481,9 @@ llama_model_qwen4exp::graph::graph(const llama_model & model, const llm_graph_pa
 
         res_hc = build_hc_combine(res_hc, cur, inject, il);
 
+        // cast the residual to a smaller dtype before it crosses a device boundary (layer
+        // split). the next layer's ops re-cast as needed. only for prefill-sized batches;
+        // decode (1 token) transfers are tiny.
         if (res_hc->ne[2] > 32 && cparams.reduce_type != GGML_TYPE_F32) {
             res_hc = ggml_cast(ctx0, res_hc, cparams.reduce_type);
         }
