@@ -1297,6 +1297,13 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
         for (int b = 0; b < sched->n_backends && *cur_backend_id == -1; b++) {
             ggml_backend_sched_set_if_supported(sched, node, b, cur_backend_id);
         }
+        if (*cur_backend_id == -1) {
+            fprintf(stderr, "[SCHED-DBG] unassigned node %d: op=%s name=%s type=%d n_backends=%d\n",
+                    i, ggml_op_name(node->op), node->name ? node->name : "(null)", (int)node->type, sched->n_backends);
+            for (int b = 0; b < sched->n_backends; b++) {
+                fprintf(stderr, "[SCHED-DBG]   backend %d (%s) supports_op=%d\n", b, ggml_backend_name(sched->backends[b]), (int)ggml_backend_supports_op(sched->backends[b], node));
+            }
+        }
         GGML_ASSERT(*cur_backend_id != -1);
     }
 
